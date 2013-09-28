@@ -1,13 +1,9 @@
 #!/usr/bin/env ruby
 
-def require_relative(path)
-  $rootdir = File.dirname(__FILE__)
-  require File.join($rootdir, path.to_str)
-end
+$:.unshift File.dirname(__FILE__)
+require "config/environment"
 
-require_relative("config/environment")
-
-tables = $config[:tables]
+tables = $config[:tables].map { |name, spec| TableMigration.new(name, spec) }
 $dbr = DBI.connect($config[:db][:source_dsn], $config[:db][:user], $config[:db][:pass])
 $dbw = DBI.connect($config[:db][:dest_dsn], $config[:db][:user], $config[:db][:pass])
 
@@ -19,51 +15,39 @@ $diffs = {}
 
 # low TODO: compare Drupal version
 
-def compare_by_key(table, key_column, spec)
-    $diffs[table] = {
-        'add' => [],
-        'same' => [],
-        'change' => [],
-    }
-    sources = $dbr.query("select * from #{table} order by #{key_column}")
-    sources.each_hash do |row|
-        src_json = YAML.dump(row)
-        id_s = $dbw.quote(row[key_column])
-        begin
-            target = $dbw.query("select * from #{table} where #{key_column} = #{id_s}")
-        rescue Mysql::Error
-            print "error on table #{table}: " + $!.error + "\n"
-            next
-        end
-        if target.num_rows() == 0
-            $diffs[table]['add'].push(src_json)
+tables.each do |table|
+    print "Checking table #{table.name}...\n"
+    if table.key_column
+        $diffs[table.name] = diffs = table.compare_by_key()
+        if not diffs[:change]
+            print "... safe to merge"
         else
-            dst_json = YAML.dump(target.fetch_hash())
-            if src_json == dst_json
-                $diffs[table]['same'].push(id_s)
-            else
-                $diffs[table]['change'].push(dst_json.wdiff(src_json))
-            end
+            print "... requires remapping or conflict resolution\n"
         end
     end
+
+    #when :strategy
 end
 
-tables.each do |table, spec|
-    print "Checking table #{table}...\n"
-    spec.each do |key, value|
-        if key == 'id' || key == 'key'
-            compare_by_key(table, value, spec)
-        end
+# TODO: phase 2
+#if $mappings.has_key?(value)
+#    # copy the mapping from the foreign key table
+#    qualified_column = "#{table}.#{key}"
+#    $mappings[qualified_column] = $mappings[value]
+#    $mappings[qualified_column]['alias'] = value
+#else
+#    raise "ERROR: No mapping found for #{qualified_column}."
+#end
 
-        if $mappings.has_key?(value)
-            qualified_column = "#{table}.#{key}"
-            $mappings[qualified_column] = $mappings[value]
-        end
-    end
+def max_remap(table, spec)
+    key_column = spec[:key]
+    wmax = $dbw.execute("SELECT MAX #{key_column} FROM #{table}")
+    $mappings["#{table}.#{key_column}"] = {
+        'shift' => wmax,
+    }
 end
 
-out = YAML.dump({
-    'diffs' => $diffs,
-    'mappings' => $mappings,
-})
-File.open("out.yaml", 'w') { |f| f.write(out) }
+dump_yaml({
+    :diffs => $diffs,
+    :mappings => $mappings,
+}, "out.yaml")

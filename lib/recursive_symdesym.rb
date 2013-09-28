@@ -1,13 +1,6 @@
-require 'yaml'
-
-require 'active_support/core_ext/hash/deep_merge'
-class Hash
-  def merge(other)
-    deep_merge!(other)
-  end
-end
-
 require 'active_support/core_ext/hash/keys'
+# FIXME: deprecate when deep_symbolize_keys! is released
+
 class Hash
   def recursively_symbolize_keys!
     self.symbolize_keys!
@@ -16,6 +9,18 @@ class Hash
         v.recursively_symbolize_keys!
       elsif v.is_a? Array
         v.recursively_symbolize_keys!
+      end
+    end
+    self
+  end
+
+  def recursively_stringify_keys!
+    self.stringify_keys!
+    self.values.each do |v|
+      if v.is_a? Hash
+        v.recursively_stringify_keys!
+      elsif v.is_a? Array
+        v.recursively_stringify_keys!
       end
     end
     self
@@ -32,14 +37,14 @@ class Array
       end
     end
   end
-end
 
-def load_yaml(path)
-  if path.is_a? Array
-    path.reduce({}) do |memo, f|
-      memo.merge(load_yaml(f))
+  def recursively_stringify_keys!
+    self.each do |item|
+      if item.is_a? Hash
+        item.recursively_stringify_keys!
+      elsif item.is_a? Array
+        item.recursively_stringify_keys!
+      end
     end
-  else
-    YAML.load(File.open(path, "r")).recursively_symbolize_keys!
   end
 end

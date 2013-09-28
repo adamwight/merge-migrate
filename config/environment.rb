@@ -1,10 +1,8 @@
 config_paths = [
-    "#{$rootdir}/config",
+    File.dirname(__FILE__),
 ]
 
 require 'rubygems'
-
-# you will need ruby1.8-dev and libmysqlclient-dev
 
 gem 'dbi'
 gem 'dbd-mysql'
@@ -14,10 +12,13 @@ gem 'wdiff'
 require 'wdiff'
 
 gem 'activesupport'
-require_relative 'lib/ez_opts.rb'
+
+require "lib/hash_merge"
+require "lib/recursive_symdesym"
+require "lib/table_migration"
+require "lib/yaml"
 
 config_files = config_paths.map {|d|
-    #Dir[File.join(d, "**", "*.yml")].sort
     Dir[File.join(d, "*.yaml")].sort
 }.flatten
-$config = load_yaml(config_files)
+$config = load_all_yamls(config_files)
