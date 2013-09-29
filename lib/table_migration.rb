@@ -1,52 +1,54 @@
-class TableMigration
-    attr_reader :name
+class TableMigration < Table
+    include AnalyzeTable
 
-    def initialize(name, spec)
-        @name = name.to_s
-        @spec = spec
-    end
+    attr_reader :diffs
 
-    def key_column
-        if @spec.has_key?(:key)
-            return @spec[:key]
+    def execute
+        strategy.each do |method|
+            self.send(method)
         end
-        return nil
     end
 
-    def compare_by_key
-        diffs = {
-            :add => [],
-            :same => [],
-            :change => [],
-            :create => false,
-        }
-        wtables = $dbw.tables
-        sources = $dbr.execute("select * from #{name} order by #{key_column}")
-        if wtables.include?(name)
-            while row = sources.fetch_hash() do
-                src_str = row.to_s
-                begin
-                    id = row[key_column].force_encoding("UTF-8")
-                    target = $dbw.execute("select * from #{name} where #{key_column} = ?", id)
-                    if row = target.fetch_hash()
-                        dst_str = row.to_s
-                        if src_str == dst_str
-                            diffs[:same].push(id)
-                        else
-                            diffs[:change].push(dst_str.wdiff(src_str))
-                        end
-                    else
-                        diffs[:add].push(src_str)
-                    end
-                rescue Mysql::Error
-                    print "error on table #{name}: " + $!.error + "\n"
-                    next
-                end
-            end
+    def is_shifting?
+        return strategy.include?("shift_changes")
+    end
+
+    def make_additions
+        if @diffs[:create]
+            result = $dbr.execute("SHOW CREATE TABLE #{name}")
+            sql = result.fetch.pop
+            db_write(sql)
+        end
+
+        @diffs[:add].each do |item|
+            item.map_keys()
+            db_write("INSERT INTO #{name} SET #{set_clause(item.row)}", *item.row.values)
+        end
+    end
+
+    def make_changes
+        @diffs[:change].each do |item|
+            item.map_keys()
+            db_write("UPDATE #{name} SET #{set_clause(item.row)} WHERE #{key_where_clause}", *item.row.values, *item.id)
+        end
+    end
+
+    def set_clause(row)
+        return row.keys.map { |column| "#{column} = ?" }.join(", ")
+    end
+
+    def shift_changes
+        @diffs[:change].each do |item|
+            item.map_keys()
+            db_write("INSERT INTO #{name} SET #{set_clause(item.row)}", *item.row.values)
+        end
+    end
+
+    def strategy
+        if @spec.include?(:strategy)
+            return @spec[:strategy]
         else
-            diffs[:create] = true
+            return $config[:strategy]
         end
-
-        return diffs
     end
 end

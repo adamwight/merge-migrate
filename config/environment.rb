@@ -13,8 +13,11 @@ require 'wdiff'
 
 gem 'activesupport'
 
-require "lib/hash_merge"
+require "lib/analyze_table"
+require "lib/db"
 require "lib/recursive_symdesym"
+require "lib/row"
+require "lib/table"
 require "lib/table_migration"
 require "lib/yaml"
 
