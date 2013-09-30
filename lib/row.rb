@@ -39,21 +39,16 @@ class Row
 
     def to_s
         return @row.to_s
-        #return YAML.dump(row)
+    end
+
+    def encode_with(coder)
+        coder.map = @row
     end
 end
 
 class AddedRow < Row
     def initialize(row)
         super(row.table, row)
-    end
-
-    def encode_with(coder)
-        if @id.is_a?(Array)
-            coder.seq = @id
-        else
-            coder.scalar = @id
-        end
     end
 end
 

@@ -37,7 +37,7 @@ module AnalyzeTable
         each_source_row do |source_row|
             if target_tables.include?(name)
                 if target_row = find_target_row(source_row.id)
-                    compare_rows(source_row, target_row)
+                    compare_rows(target_row, source_row)
                 else
                     @diffs[:add].push(AddedRow.new(source_row))
                 end
